@@ -21,14 +21,13 @@ func main() {
 	}
 	ctx := context.Background()
 	err = r.ForEachUser(ctx, func(u *domain.User) error {
-		act, err := u.FetchActivity()
 		if err != nil {
 			return err
 		}
 		log.WithFields(log.Fields{
-			"username": u.Username,
-			"address":  u.Address,
-			"casts":    len(act),
+			"username":  u.Username,
+			"address":   u.Address,
+			"followers": len(u.Followers),
 		}).Info("user")
 		return nil
 	})

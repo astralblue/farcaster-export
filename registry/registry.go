@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"farcaster/farcaster"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -27,6 +28,7 @@ type Registry interface {
 }
 
 type registry struct {
+	fc farcaster.Client
 	c  *ethclient.Client
 	fr *farcaster_registry.FarcasterRegistryCaller
 	ff *farcaster_registry.FarcasterRegistryFilterer
@@ -47,39 +49,33 @@ func getDirectory(url string) (*domain.Directory, error) {
 	return &d, nil
 }
 
-func (r *registry) GetUser(ctx context.Context, username string) (*domain.User, error) {
-	var b [32]byte
-	copy(b[:], username)
-	url, err := r.fr.UsernameToUrl(nil, b)
-	if err != nil {
-		return nil, err
-	}
-	log.Info(url)
-	return nil, nil
-}
-
 func (r *registry) ForEachUser(ctx context.Context, handler func(u *domain.User) error) error {
 	grp, ctx := errgroup.WithContext(ctx)
 	users := make(chan *farcaster_registry.FarcasterRegistryRegisterName)
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 1; i++ {
 		grp.Go(func() error {
 			for u := range users {
 				username := string(bytes.Trim(u.Username[:], "\x00"))
-				url, err := r.fr.UsernameToUrl(nil, u.Username)
-
+				logger := log.WithFields(log.Fields{
+					"user":    username,
+					"address": u.Owner.String(),
+				})
+				profile, err := r.fc.GetProfile(ctx, u.Owner.String())
 				if err != nil {
-					return err
+					logger.WithError(err).Error("error getting user")
+					continue
 				}
-				d, err := getDirectory(url.Url)
-				if err != nil || d.Body == nil {
+				followers, err := r.fc.GetFollowers(ctx, u.Owner.String())
+				if err != nil {
+					logger.WithError(err).Error("error getting followers")
 					continue
 				}
 
 				if err := handler(&domain.User{
-					Address:      u.Owner.String(),
-					Username:     username,
-					DirectoryURL: url.Url,
-					Directory:    d,
+					Address:   u.Owner.String(),
+					Username:  username,
+					Profile:   profile,
+					Followers: followers,
 				}); err != nil {
 					return err
 				}
@@ -120,7 +116,7 @@ func NewRegistry(cfg Config) (*registry, error) {
 	if cfg.RegistryAddress != "" {
 		regAddr = cfg.RegistryAddress
 	}
-	c, err := client.NewClient(cfg.JsonRpcUrl)
+	c, err := client.NewEthClient(cfg.JsonRpcUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +126,15 @@ func NewRegistry(cfg Config) (*registry, error) {
 		return nil, err
 	}
 	ff, err := farcaster_registry.NewFarcasterRegistryFilterer(common.HexToAddress(regAddr), c)
+	if err != nil {
+		return nil, err
+	}
+	fc, err := farcaster.NewClient()
+	if err != nil {
+		return nil, err
+	}
 	return &registry{
+		fc: fc,
 		c:  c,
 		fr: reg,
 		ff: ff,

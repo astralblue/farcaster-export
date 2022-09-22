@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func NewClient(url string) (*ethclient.Client, error) {
+func NewEthClient(url string) (*ethclient.Client, error) {
 	tr := &http.Transport{
 		DialContext: (&net.Dialer{
 			KeepAlive: 30 * time.Second,
