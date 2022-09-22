@@ -9,7 +9,10 @@ import (
 )
 
 func main() {
-	url := os.Getenv("ALCHEMY_RINKEBY")
+	url := os.Getenv("RINKEBY_JSON_RPC")
+	if url == "" {
+		log.Fatal("set RINKEBY_JSON_RPC to a valid rinkeby json rpc url")
+	}
 	r, err := registry.NewRegistry(registry.Config{
 		JsonRpcUrl: url,
 	})
