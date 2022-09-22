@@ -4,13 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"golang.org/x/sync/errgroup"
-	"net/http"
-	"strings"
-
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
+	"net/http"
 
 	"farcaster/client"
 	"farcaster/contracts/farcaster_registry"
@@ -19,6 +18,8 @@ import (
 
 const (
 	defaultRegAddress = "0xe3Be01D99bAa8dB9905b33a3cA391238234B79D1"
+	registerNameTopic = "0x00af56d6ef7b1de1b37e4636c3e255d78dc3e9359036fb04ca51e32d946a6834"
+	genesisBlock      = 9145238
 )
 
 type Registry interface {
@@ -28,6 +29,7 @@ type Registry interface {
 type registry struct {
 	c  *ethclient.Client
 	fr *farcaster_registry.FarcasterRegistryCaller
+	ff *farcaster_registry.FarcasterRegistryFilterer
 }
 
 func getDirectory(url string) (*domain.Directory, error) {
@@ -45,23 +47,25 @@ func getDirectory(url string) (*domain.Directory, error) {
 	return &d, nil
 }
 
-func (r *registry) ForEachUser(ctx context.Context, handler func(u *domain.User) error) error {
-	uc, err := r.fr.UsernamesLength(nil)
+func (r *registry) GetUser(ctx context.Context, username string) (*domain.User, error) {
+	var b [32]byte
+	copy(b[:], username)
+	url, err := r.fr.UsernameToUrl(nil, b)
 	if err != nil {
-		log.WithError(err).Fatal("error getting length")
+		return nil, err
 	}
+	log.Info(url)
+	return nil, nil
+}
 
+func (r *registry) ForEachUser(ctx context.Context, handler func(u *domain.User) error) error {
 	grp, ctx := errgroup.WithContext(ctx)
-	idx := make(chan uint32)
+	users := make(chan *farcaster_registry.FarcasterRegistryRegisterName)
 	for i := 0; i < 20; i++ {
 		grp.Go(func() error {
-			for i := range idx {
-				u, err := r.fr.UsernameAtIndex(nil, uint32(i))
-				if err != nil {
-					return err
-				}
-				username := string(bytes.Trim(u[:], "\x00"))
-				url, err := r.fr.UsernameToUrl(nil, u)
+			for u := range users {
+				username := string(bytes.Trim(u.Username[:], "\x00"))
+				url, err := r.fr.UsernameToUrl(nil, u.Username)
 
 				if err != nil {
 					return err
@@ -71,13 +75,8 @@ func (r *registry) ForEachUser(ctx context.Context, handler func(u *domain.User)
 					continue
 				}
 
-				parts := strings.Split(d.Body.AddressActivityUrl, "/")
-				addr := parts[len(parts)-1]
-				if !strings.HasPrefix(addr, "0x") {
-					continue
-				}
 				if err := handler(&domain.User{
-					Address:      parts[len(parts)-1],
+					Address:      u.Owner.String(),
 					Username:     username,
 					DirectoryURL: url.Url,
 					Directory:    d,
@@ -89,11 +88,25 @@ func (r *registry) ForEachUser(ctx context.Context, handler func(u *domain.User)
 		})
 	}
 
-	for i := int64(0); i < uc.Int64(); i++ {
-		idx <- uint32(i)
+	bn, err := r.c.BlockNumber(context.Background())
+	if err != nil {
+		return err
 	}
 
-	close(idx)
+	evts, err := r.ff.FilterRegisterName(&bind.FilterOpts{
+		Start:   uint64(genesisBlock),
+		End:     &bn,
+		Context: ctx,
+	}, nil, nil)
+	if err != nil {
+		return err
+	}
+
+	for evts.Next() {
+		users <- evts.Event
+	}
+
+	close(users)
 	return grp.Wait()
 }
 
@@ -116,8 +129,10 @@ func NewRegistry(cfg Config) (*registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	ff, err := farcaster_registry.NewFarcasterRegistryFilterer(common.HexToAddress(regAddr), c)
 	return &registry{
 		c:  c,
 		fr: reg,
+		ff: ff,
 	}, nil
 }
