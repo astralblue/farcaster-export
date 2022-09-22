@@ -17,7 +17,7 @@ const pathProfile = "/v1/profiles"
 const pathNotifications = "/v1/notifications"
 
 var minBackoff = 5 * time.Second
-var maxBackoff = 1 * time.Minute
+var maxBackoff = 30 * time.Second
 
 type Client interface {
 	GetProfile(ctx context.Context, address string) (*User, error)
@@ -30,15 +30,19 @@ type client struct {
 var ErrRateLimit = errors.New("rate limited")
 
 type RetryOptions struct {
-	MaxElapsedTime *time.Duration
-	MinBackoff     *time.Duration
-	MaxBackoff     *time.Duration
+	MaxElapsedTime time.Duration
+	MinBackoff     time.Duration
+	MaxBackoff     time.Duration
 }
 
 func withBackoff(
 	ctx context.Context, operation func(ctx context.Context) error, options RetryOptions,
 ) error {
 	bo := backoff.NewExponentialBackOff()
+	bo.MaxElapsedTime = options.MaxElapsedTime
+	bo.InitialInterval = options.MinBackoff
+	bo.MaxInterval = options.MaxBackoff
+
 	err := backoff.Retry(func() error {
 		if ctx.Err() != nil {
 			return backoff.Permanent(ctx.Err())
@@ -71,8 +75,6 @@ func (c *client) get(ctx context.Context, path string, target interface{}) error
 	}
 
 	return withBackoff(ctx, func(ctx context.Context) error {
-		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
 		req = req.WithContext(ctx)
 
 		dc := http.DefaultClient
@@ -82,7 +84,7 @@ func (c *client) get(ctx context.Context, path string, target interface{}) error
 		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode == 429 {
+		if resp.StatusCode == 429 || resp.StatusCode == 502 {
 			return ErrRateLimit
 		}
 		if resp.StatusCode >= 400 {
@@ -90,8 +92,8 @@ func (c *client) get(ctx context.Context, path string, target interface{}) error
 		}
 		return json.NewDecoder(resp.Body).Decode(target)
 	}, RetryOptions{
-		MinBackoff: &minBackoff,
-		MaxBackoff: &maxBackoff,
+		MinBackoff: minBackoff,
+		MaxBackoff: maxBackoff,
 	})
 }
 

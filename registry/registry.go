@@ -3,23 +3,19 @@ package registry
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"farcaster/client"
+	"farcaster/contracts/farcaster_registry"
+	"farcaster/domain"
 	"farcaster/farcaster"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
-	"net/http"
-
-	"farcaster/client"
-	"farcaster/contracts/farcaster_registry"
-	"farcaster/domain"
 )
 
 const (
 	defaultRegAddress = "0xe3Be01D99bAa8dB9905b33a3cA391238234B79D1"
-	registerNameTopic = "0x00af56d6ef7b1de1b37e4636c3e255d78dc3e9359036fb04ca51e32d946a6834"
 	genesisBlock      = 9145238
 )
 
@@ -34,25 +30,10 @@ type registry struct {
 	ff *farcaster_registry.FarcasterRegistryFilterer
 }
 
-func getDirectory(url string) (*domain.Directory, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	var d domain.Directory
-	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
-		return nil, err
-	}
-	if err := resp.Body.Close(); err != nil {
-		return nil, err
-	}
-	return &d, nil
-}
-
 func (r *registry) ForEachUser(ctx context.Context, handler func(u *domain.User) error) error {
 	grp, ctx := errgroup.WithContext(ctx)
 	users := make(chan *farcaster_registry.FarcasterRegistryRegisterName)
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 3; i++ {
 		grp.Go(func() error {
 			for u := range users {
 				username := string(bytes.Trim(u.Username[:], "\x00"))
