@@ -1,6 +1,6 @@
 # farcaster-export
 
-This currently just prints some summary data.  The next step is to structure and export the data in a way that is condusive for scoring.
+This currently just prints some summary data.  The next step is to structure and export the data in a way that is conducive for scoring.
 
 ## To Build
 
