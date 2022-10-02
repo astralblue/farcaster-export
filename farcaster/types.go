@@ -72,23 +72,26 @@ func (n *Notifications) ExtractFollowers() []*UserAddress {
 }
 
 type User struct {
-	Address     string `json:"address"`
-	Username    string `json:"username"`
-	DisplayName string `json:"displayName"`
-	Avatar      struct {
-		Url        string `json:"url"`
-		IsVerified bool   `json:"isVerified"`
-	} `json:"avatar"`
-	FollowerCount     int  `json:"followerCount"`
-	FollowingCount    int  `json:"followingCount"`
-	IsViewerFollowing bool `json:"isViewerFollowing"`
-	IsFollowingViewer bool `json:"isFollowingViewer"`
+	Address           string `json:"address"`
+	Username          string `json:"username"`
+	DisplayName       string `json:"displayName"`
+	Avatar            Avatar `json:"avatar"`
+	FollowerCount     int    `json:"followerCount"`
+	FollowingCount    int    `json:"followingCount"`
+	IsViewerFollowing bool   `json:"isViewerFollowing"`
+	IsFollowingViewer bool   `json:"isFollowingViewer"`
 	Profile           struct {
 		Bio struct {
 			Text     string        `json:"text"`
 			Mentions []interface{} `json:"mentions"`
 		} `json:"bio"`
 	} `json:"profile"`
+}
+
+// Avatar is found in User and Profile objects
+type Avatar struct {
+	Url        string `json:"url"`
+	IsVerified bool   `json:"isVerified"`
 }
 
 // Profile is generated from json: https://guardian.farcaster.xyz/v1/profiles/{address}
@@ -141,4 +144,18 @@ type Activity struct {
 			Username string `json:"username"`
 		} `json:"replyParentUsername"`
 	} `json:"meta"`
+}
+
+// Followers are generated from json: https://guardian.farcaster.xyz/indexer/followers/{address}
+type Followers []Follower
+
+// Follower is one follower from the followers API
+type Follower struct {
+	// TODO(ek): define/use real type instead of bool for Verifications
+	Address           string `json:"address"`
+	Username          string `json:"username"`
+	DisplayName       string `json:"displayName"`
+	Avatar            Avatar `json:"avatar"`
+	IsViewerFollowing bool   `json:"isViewerFollowing"'`
+	Verifications     []bool `json:"verifications"`
 }

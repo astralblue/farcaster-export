@@ -15,6 +15,7 @@ import (
 const host = "https://guardian.farcaster.xyz"
 const pathProfile = "/v1/profiles"
 const pathNotifications = "/v1/notifications"
+const pathFollowers = "/indexer/followers"
 
 var minBackoff = 5 * time.Second
 var maxBackoff = 30 * time.Second
@@ -106,37 +107,15 @@ func (c *client) GetProfile(ctx context.Context, address string) (*User, error) 
 	return p.Result.User, nil
 }
 
-func (c *client) GetFollowers(ctx context.Context, address string) ([]*UserAddress, error) {
-	//TODO implement me
-	followers := make(map[string]bool)
-	var n Notifications
-	err := c.get(ctx, fmt.Sprintf("%s%s?address=%s", host, pathNotifications, address), &n)
+func (c *client) GetFollowers(ctx context.Context, address string) (result []*UserAddress, err error) {
+	var n Followers
+	err = c.get(ctx, fmt.Sprintf("%s%s/%s", host, pathFollowers, address), &n)
 	if err != nil {
 		return nil, err
 	}
-	result := n.ExtractFollowers()
-	for _, f := range result {
-		followers[f.Address] = true
+	for _, f := range n {
+		result = append(result, &UserAddress{Username: f.Username, Address: f.Address})
 	}
-	nextCursor := n.Meta.Next
-	for nextCursor != "" {
-		var n Notifications
-		err := c.get(ctx, nextCursor, &n)
-		if err != nil {
-			return nil, err
-		}
-		if len(n.Result.Notifications) == 0 {
-			break
-		}
-		for _, f := range n.ExtractFollowers() {
-			if _, ok := followers[f.Address]; !ok {
-				followers[f.Address] = true
-				result = append(result, f)
-			}
-		}
-		nextCursor = n.Meta.Next
-	}
-
 	return result, nil
 }
 
